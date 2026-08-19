@@ -1,0 +1,70 @@
+{
+  "name": "Hoolulu Factory Frozen Core",
+  "version": "1.0.0",
+  "status": "frozen",
+  "purpose": "Define the immutable safety and execution contract for every project produced by Hoolulu Factory.",
+  "principles": [
+    {
+      "id": "core-is-read-only",
+      "rule": "The running application may read this document but must never modify, replace, or delete it."
+    },
+    {
+      "id": "workspace-boundary",
+      "rule": "Generated files must remain inside the build workspace assigned to their build."
+    },
+    {
+      "id": "no-secret-material",
+      "rule": "Generated artifacts must not contain credentials, environment secrets, private keys, or authentication tokens."
+    },
+    {
+      "id": "deterministic-fallback",
+      "rule": "The factory must remain useful without an external model by producing a safe deterministic starter project."
+    },
+    {
+      "id": "validate-before-release",
+      "rule": "Every build must pass path, size, manifest, and required-file validation before it can be downloaded or previewed."
+    },
+    {
+      "id": "no-untrusted-execution",
+      "rule": "The factory may write and package generated source code but must not execute generated code on the host."
+    },
+    {
+      "id": "traceable-output",
+      "rule": "Every artifact must identify its build, originating prompt, generator, and Frozen Core digest."
+    },
+    {
+      "id": "human-ownership",
+      "rule": "Generated work is a draft owned and reviewed by its operator; destructive deployment actions require explicit human approval."
+    }
+  ],
+  "builder_contract": {
+    "maximum_files": 60,
+    "maximum_file_bytes": 262144,
+    "maximum_project_bytes": 4194304,
+    "reserved_paths": [
+      ".env",
+      ".git",
+      "core",
+      "FROZEN_CORE.json",
+      "FROZEN_CORE.sha256"
+    ],
+    "required_web_files": [
+      "index.html"
+    ],
+    "pipeline": [
+      "understand",
+      "plan",
+      "generate",
+      "validate",
+      "package"
+    ]
+  },
+  "runtime_contract": {
+    "core_api_methods": [
+      "GET"
+    ],
+    "generated_code_execution": false,
+    "artifact_retention": "operator-controlled",
+    "external_model_required": false
+  }
+}

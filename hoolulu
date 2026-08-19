@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$ROOT"
+
+PURPLE='\033[0;35m'
+GREEN='\033[0;32m'
+DIM='\033[2m'
+RESET='\033[0m'
+
+say() { printf "${PURPLE}◆${RESET} %s\n" "$1"; }
+fail() { printf "Hoolulu needs %s. Install it once, then run ./hoolulu again.\n" "$1" >&2; exit 1; }
+
+command -v python3 >/dev/null 2>&1 || fail "Python 3.11+"
+command -v node >/dev/null 2>&1 || fail "Node.js 20+"
+command -v npm >/dev/null 2>&1 || fail "npm"
+
+python3 - <<'PY' || fail "Python 3.11+"
+import sys
+raise SystemExit(0 if sys.version_info >= (3, 11) else 1)
+PY
+
+if [[ ! -x .venv/bin/python ]]; then
+  say "Preparing the local factory (first run only)"
+  python3 -m venv .venv
+fi
+
+if ! .venv/bin/python -c 'import fastapi, httpx, pydantic_settings, uvicorn' >/dev/null 2>&1; then
+  say "Installing the backend automatically"
+  .venv/bin/python -m pip install --quiet --disable-pip-version-check -r backend/requirements.txt
+fi
+
+FRONTEND_INSTALLED=0
+if [[ ! -d frontend/node_modules ]]; then
+  say "Installing the interface automatically"
+  if [[ -f frontend/package-lock.json ]]; then
+    npm --prefix frontend ci --no-audit --no-fund --silent
+  else
+    npm --prefix frontend install --no-audit --no-fund --silent
+  fi
+  FRONTEND_INSTALLED=1
+fi
+
+NEEDS_BUILD="$FRONTEND_INSTALLED"
+if [[ ! -f frontend/dist/index.html ]]; then
+  NEEDS_BUILD=1
+elif find frontend/src frontend/index.html frontend/package.json frontend/vite.config.ts \
+  -type f -newer frontend/dist/index.html -print -quit | grep -q .; then
+  NEEDS_BUILD=1
+fi
+if [[ "$NEEDS_BUILD" == "1" ]]; then
+  say "Building the interface"
+  npm --prefix frontend run build --silent
+fi
+
+.venv/bin/python scripts/verify_frozen_core.py >/dev/null
+chmod a-w core/FROZEN_CORE.json core/FROZEN_CORE.sha256 2>/dev/null || true
+
+PORT="${FACTORY_PORT:-8000}"
+printf "${GREEN}✓ Hoolulu is ready${RESET}\n"
+printf "${DIM}  Open http://localhost:%s — press Ctrl+C to stop${RESET}\n\n" "$PORT"
+
+export FACTORY_ENVIRONMENT="${FACTORY_ENVIRONMENT:-production}"
+exec .venv/bin/uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port "$PORT"

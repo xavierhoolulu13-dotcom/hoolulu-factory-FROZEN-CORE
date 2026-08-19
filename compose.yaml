@@ -1,0 +1,17 @@
+services:
+  hoolulu:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      FACTORY_ENVIRONMENT: production
+      FACTORY_DATABASE_PATH: /app/.data/factory.db
+      FACTORY_WORKSPACE_PATH: /app/.factory/runs
+    volumes:
+      - hoolulu-data:/app/.data
+      - hoolulu-builds:/app/.factory
+    restart: unless-stopped
+
+volumes:
+  hoolulu-data:
+  hoolulu-builds:
