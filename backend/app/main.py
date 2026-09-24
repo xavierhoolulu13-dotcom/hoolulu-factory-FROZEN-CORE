@@ -12,7 +12,7 @@ from app.core_guard import FrozenCore
 from app.database import Repository
 from app.services.builder import FactoryBuilder
 from app.services.chat import ChatService
-from app.services.llm import OpenAICompatibleModel
+from app.services.llm import build_model
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -28,7 +28,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             runtime_settings.frozen_core_path,
             runtime_settings.frozen_core_digest_path,
         )
-        model = OpenAICompatibleModel(
+        model = build_model(
             runtime_settings.llm_api_key,
             runtime_settings.llm_base_url,
             runtime_settings.llm_model,
