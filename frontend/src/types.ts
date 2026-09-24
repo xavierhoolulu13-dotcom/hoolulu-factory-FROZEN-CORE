@@ -37,6 +37,10 @@ export interface ConversationDetail extends ConversationSummary {
   builds: Build[]
 }
 
+export interface BuildRow extends Build {
+  conversation_title: string
+}
+
 export interface CoreDocument {
   name: string
   version: string

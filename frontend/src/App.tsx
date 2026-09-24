@@ -1,76 +1,82 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Activity, ChevronDown, LockKeyhole, Menu, Sparkles } from 'lucide-react'
-import { api, streamMessage } from './lib/api'
+import { useCallback, useEffect, useState } from 'react'
+import { Menu, Sparkles } from 'lucide-react'
+import { api } from './lib/api'
 import type {
   Build,
+  BuildRow,
   ConversationDetail,
   ConversationSummary,
   CoreResponse,
   HealthResponse,
-  Message,
-  Mode,
-  ProgressItem,
 } from './types'
 import { BrandMark } from './components/BrandMark'
-import { BuildPanel } from './components/BuildPanel'
-import { Composer } from './components/Composer'
+import { BuildPage } from './components/BuildPage'
+import { BuildsDb } from './components/BuildsDb'
+import { ConversationPage } from './components/ConversationPage'
+import { ConversationsDb } from './components/ConversationsDb'
 import { CoreModal } from './components/CoreModal'
-import { EmptyState } from './components/EmptyState'
-import { MessageList } from './components/MessageList'
-import { Sidebar } from './components/Sidebar'
+import { Dashboard } from './components/Dashboard'
+import { NewBuild } from './components/NewBuild'
+import { Sidebar, type Page } from './components/Sidebar'
 import './styles.css'
 
-function buildFrom(value: unknown): Build | null {
-  if (!value || typeof value !== 'object' || !('id' in value)) return null
-  return value as Build
+type Route =
+  | { page: 'dashboard' }
+  | { page: 'builds' }
+  | { page: 'conversations' }
+  | { page: 'new' }
+  | { page: 'build'; id: string }
+  | { page: 'conversation'; id: string }
+
+function navPage(route: Route): Page {
+  return route.page === 'build' ? 'builds' : route.page === 'conversation' ? 'conversations' : route.page
 }
 
 export default function App() {
+  const [route, setRoute] = useState<Route>({ page: 'dashboard' })
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
-  const [activeId, setActiveId] = useState<string | null>(null)
-  const [detail, setDetail] = useState<ConversationDetail | null>(null)
-  const [draft, setDraft] = useState('')
-  const [mode, setMode] = useState<Mode>('build')
+  const [builds, setBuilds] = useState<BuildRow[]>([])
+  const [details, setDetails] = useState<Record<string, ConversationDetail>>({})
+  const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
-  const [streamingText, setStreamingText] = useState('')
-  const [progress, setProgress] = useState<ProgressItem[]>([])
-  const [currentBuild, setCurrentBuild] = useState<Build | null>(null)
-  const [panelOpen, setPanelOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [core, setCore] = useState<CoreResponse | null>(null)
   const [health, setHealth] = useState<HealthResponse | null>(null)
   const [showCore, setShowCore] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
 
-  const hasConversation = Boolean(detail?.messages.length)
-  const activeTitle = detail?.title ?? 'New build'
+  const flash = useCallback((message: string) => setToast(message), [])
 
-  const refreshConversations = async () => {
-    const items = await api.conversations()
-    setConversations(items)
-    return items
-  }
-
-  useEffect(() => {
-    void refreshConversations().catch(() => setToast('Could not load build history.'))
-    void api.core().then(setCore).catch(() => setToast('Frozen Core verification failed.'))
-    void api.health().then(setHealth).catch(() => setToast('Factory backend is offline.'))
-  }, [])
-
-  useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-        event.preventDefault()
-        if (!busy) newConversation()
+  const refreshAll = useCallback(async () => {
+    try {
+      const items = await api.conversations()
+      setConversations(items)
+      const fetched = await Promise.all(
+        items.map((item) => api.conversation(item.id).catch(() => null)),
+      )
+      const rows: BuildRow[] = []
+      const cache: Record<string, ConversationDetail> = {}
+      for (const detail of fetched) {
+        if (!detail) continue
+        cache[detail.id] = detail
+        for (const build of detail.builds) {
+          rows.push({ ...build, conversation_title: detail.title })
+        }
       }
-      if (event.key === 'Escape') {
-        setSidebarOpen(false)
-        setShowCore(false)
-      }
+      setDetails(cache)
+      setBuilds(rows)
+    } catch (error) {
+      flash(error instanceof Error ? error.message : 'Could not load factory data.')
+    } finally {
+      setLoading(false)
     }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [busy])
+  }, [flash])
+
+  useEffect(() => {
+    void refreshAll()
+    void api.core().then(setCore).catch(() => flash('Frozen Core verification failed.'))
+    void api.health().then(setHealth).catch(() => flash('Factory backend is offline.'))
+  }, [refreshAll, flash])
 
   useEffect(() => {
     if (!toast) return
@@ -78,148 +84,97 @@ export default function App() {
     return () => window.clearTimeout(timer)
   }, [toast])
 
-  const newConversation = () => {
-    setActiveId(null)
-    setDetail(null)
-    setDraft('')
-    setStreamingText('')
-    setProgress([])
-    setCurrentBuild(null)
-    setPanelOpen(false)
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setSidebarOpen(false)
+        setShowCore(false)
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
+  const navigate = (page: Page) => {
+    setRoute({ page })
     setSidebarOpen(false)
   }
 
-  const selectConversation = async (id: string) => {
-    if (busy || id === activeId) return
-    try {
-      const selected = await api.conversation(id)
-      setActiveId(id)
-      setDetail(selected)
-      setCurrentBuild(selected.builds[0] ?? null)
-      setProgress([])
-      setPanelOpen(false)
-    } catch (error) {
-      setToast(error instanceof Error ? error.message : 'Could not open that conversation.')
-    }
-  }
+  const openBuild = useCallback(
+    async (id: string) => {
+      setRoute({ page: 'build', id })
+      setSidebarOpen(false)
+      // Make sure the builds index knows about this build (e.g. just created).
+      if (!builds.some((build) => build.id === id)) {
+        await refreshAll()
+      }
+    },
+    [builds, refreshAll],
+  )
+
+  const openConversation = useCallback(
+    async (id: string) => {
+      setRoute({ page: 'conversation', id })
+      setSidebarOpen(false)
+      if (!details[id]) {
+        try {
+          const detail = await api.conversation(id)
+          setDetails((cache) => ({ ...cache, [id]: detail }))
+        } catch (error) {
+          flash(error instanceof Error ? error.message : 'Could not open that conversation.')
+        }
+      }
+    },
+    [details, flash],
+  )
 
   const deleteConversation = async (id: string) => {
     const item = conversations.find((conversation) => conversation.id === id)
-    if (!window.confirm(`Delete “${item?.title ?? 'this build'}” and its artifacts?`)) return
+    if (!window.confirm(`Delete “${item?.title || 'this conversation'}” and its artifacts?`)) return
+    setBusy(true)
     try {
       await api.deleteConversation(id)
-      if (activeId === id) newConversation()
-      await refreshConversations()
-    } catch (error) {
-      setToast(error instanceof Error ? error.message : 'Could not delete that build.')
-    }
-  }
-
-  const send = async () => {
-    const content = draft.trim()
-    if (!content || busy) return
-
-    setBusy(true)
-    setDraft('')
-    setStreamingText('')
-    setProgress([])
-    if (mode === 'build') {
-      setCurrentBuild(null)
-      setPanelOpen(true)
-    }
-
-    let conversationId = activeId
-    let baseDetail = detail
-
-    try {
-      if (!conversationId) {
-        const created = await api.createConversation()
-        conversationId = created.id
-        setActiveId(created.id)
-        baseDetail = { ...created, messages: [], builds: [] }
-        setDetail(baseDetail)
-        await refreshConversations()
-      }
-
-      const optimistic: Message = {
-        id: `pending-${Date.now()}`,
-        conversation_id: conversationId,
-        role: 'user',
-        content,
-        mode,
-        meta: {},
-        created_at: new Date().toISOString(),
-      }
-      setDetail({
-        ...(baseDetail as ConversationDetail),
-        messages: [...(baseDetail?.messages ?? []), optimistic],
+      setDetails((cache) => {
+        const next = { ...cache }
+        delete next[id]
+        return next
       })
-
-      await streamMessage(conversationId, content, mode, ({ event, data }) => {
-        if (event === 'build') {
-          const build = buildFrom(data.build)
-          if (build) setCurrentBuild(build)
-        }
-        if (event === 'stage') {
-          const stage = typeof data.stage === 'string' ? data.stage : ''
-          const eventDetail = typeof data.detail === 'string' ? data.detail : ''
-          if (stage) {
-            setProgress((items) => {
-              const next = items.filter((item) => item.stage !== stage)
-              return [...next, { stage, detail: eventDetail }]
-            })
-          }
-        }
-        if (event === 'token' && typeof data.content === 'string') {
-          setStreamingText((value) => value + data.content)
-        }
-        if (event === 'artifact' || event === 'build_error' || event === 'done') {
-          const build = buildFrom(data.build)
-          if (build) setCurrentBuild(build)
-        }
-      })
-
-      const refreshed = await api.conversation(conversationId)
-      setDetail(refreshed)
-      setCurrentBuild(refreshed.builds[0] ?? null)
-      setStreamingText('')
-      await refreshConversations()
+      await refreshAll()
+      setRoute({ page: 'conversations' })
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'The factory request failed.'
-      setToast(message)
-      setStreamingText('')
-      const failure: Message = {
-        id: `error-${Date.now()}`,
-        conversation_id: conversationId ?? '',
-        role: 'assistant',
-        content: `I couldn’t reach the factory: ${message}`,
-        mode,
-        meta: {},
-        created_at: new Date().toISOString(),
-      }
-      setDetail((value) => value ? { ...value, messages: [...value.messages, failure] } : value)
+      flash(error instanceof Error ? error.message : 'Could not delete that conversation.')
     } finally {
       setBusy(false)
     }
   }
 
-  const activityCount = useMemo(
-    () => progress.filter((item) => item.stage !== 'completed').length,
-    [progress],
-  )
+  const initialBuildFor = (id: string): Build | null => {
+    const row = builds.find((build) => build.id === id)
+    if (!row) return null
+    const { conversation_title: _title, ...build } = row
+    return build as Build
+  }
+
+  const conversationTitleFor = (buildId: string): string | null => {
+    const row = builds.find((build) => build.id === buildId)
+    return row?.conversation_title ?? null
+  }
+
+  const page = navPage(route)
+  const activeConversationId = route.page === 'conversation' ? route.id : null
 
   return (
-    <div className={`app-shell ${panelOpen ? 'panel-is-open' : ''}`}>
+    <div className="app-shell">
       <Sidebar
+        page={page}
         conversations={conversations}
-        activeId={activeId}
+        activeConversationId={activeConversationId}
         open={sidebarOpen}
-        busy={busy}
         modelConnected={Boolean(health?.model_connected)}
+        onNavigate={navigate}
+        onOpenConversation={(id) => void openConversation(id)}
         onClose={() => setSidebarOpen(false)}
-        onNew={newConversation}
-        onSelect={(id) => void selectConversation(id)}
-        onDelete={(id) => void deleteConversation(id)}
+        onShowCore={() => setShowCore(true)}
       />
 
       <section className="workspace">
@@ -228,77 +183,93 @@ export default function App() {
             <Menu size={19} />
             <span className="sr-only">Open sidebar</span>
           </button>
-          <button className="model-selector" type="button" title="Current factory">
-            <span className="model-name">Hoolulu</span>
-            <span className="model-edition">Factory</span>
-            <ChevronDown size={14} />
-          </button>
-          {hasConversation && <span className="topbar-title">{activeTitle}</span>}
+          <span className="topbar-title">
+            {route.page === 'build'
+              ? 'Build'
+              : route.page === 'conversation'
+                ? 'Conversation'
+                : route.page === 'new'
+                  ? 'New build'
+                  : page[0].toUpperCase() + page.slice(1)}
+          </span>
           <span className="topbar-spacer" />
-          {(currentBuild || progress.length > 0) && (
-            <button
-              className={`activity-button ${panelOpen ? 'active' : ''}`}
-              type="button"
-              onClick={() => setPanelOpen((value) => !value)}
-            >
-              <Activity size={16} />
-              <span>Activity</span>
-              {busy && <i>{activityCount || 1}</i>}
-            </button>
+          {health && (
+            <span className={`health-chip ${health.status === 'ok' ? 'ok' : 'down'}`} title={health.service}>
+              {health.status === 'ok' ? 'Factory online' : 'Factory offline'}
+            </span>
           )}
-          <button className="core-badge" type="button" onClick={() => setShowCore(true)}>
-            <LockKeyhole size={13} />
-            <span>Core locked</span>
-            <i />
-          </button>
         </header>
 
-        <main className="chat-area">
-          {!hasConversation ? (
-            <EmptyState
-              value={draft}
-              mode={mode}
-              busy={busy}
-              onChange={setDraft}
-              onModeChange={setMode}
-              onSubmit={() => void send()}
+        <main className="page-scroll">
+          {route.page === 'dashboard' && (
+            <Dashboard
+              builds={builds}
+              conversations={conversations}
+              loading={loading}
+              onOpenBuild={(id) => void openBuild(id)}
+              onOpenConversation={(id) => void openConversation(id)}
             />
-          ) : (
-            <div className="conversation-view">
-              <MessageList
-                messages={detail?.messages ?? []}
-                builds={detail?.builds ?? (currentBuild ? [currentBuild] : [])}
-                streamingText={streamingText}
-                busy={busy}
-              />
-              <div className="conversation-composer">
-                <Composer
-                  value={draft}
-                  mode={mode}
-                  busy={busy}
-                  compact
-                  onChange={setDraft}
-                  onModeChange={setMode}
-                  onSubmit={() => void send()}
-                />
-                <p>Hoolulu can make mistakes. Review generated code before shipping.</p>
-              </div>
+          )}
+          {route.page === 'builds' && (
+            <BuildsDb
+              builds={builds}
+              loading={loading}
+              onOpenBuild={(id) => void openBuild(id)}
+              onOpenConversation={(id) => void openConversation(id)}
+            />
+          )}
+          {route.page === 'conversations' && (
+            <ConversationsDb
+              conversations={conversations}
+              builds={builds}
+              loading={loading}
+              onOpenConversation={(id) => void openConversation(id)}
+            />
+          )}
+          {route.page === 'new' && (
+            <NewBuild
+              onCreated={() => void refreshAll()}
+              onOpenBuild={(id) => void openBuild(id)}
+            />
+          )}
+          {route.page === 'build' && (
+            <BuildPage
+              key={route.id}
+              buildId={route.id}
+              initialBuild={initialBuildFor(route.id)}
+              conversationTitle={conversationTitleFor(route.id)}
+              onOpenConversation={(id) => void openConversation(id)}
+              onBack={() => setRoute({ page: 'builds' })}
+            />
+          )}
+          {route.page === 'conversation' && details[route.id] && (
+            <ConversationPage
+              key={route.id}
+              detail={details[route.id]}
+              busy={busy}
+              onDelete={(id) => void deleteConversation(id)}
+              onOpenBuild={(id) => void openBuild(id)}
+              onBack={() => setRoute({ page: 'conversations' })}
+            />
+          )}
+          {route.page === 'conversation' && !details[route.id] && (
+            <div className="page">
+              <p className="dash-empty">Loading conversation…</p>
             </div>
           )}
         </main>
       </section>
 
-      <BuildPanel
-        open={panelOpen}
-        build={currentBuild}
-        progress={progress}
-        digest={core?.digest ?? ''}
-        onClose={() => setPanelOpen(false)}
-      />
-
       {showCore && <CoreModal core={core} onClose={() => setShowCore(false)} />}
-      {toast && <div className="toast"><Sparkles size={15} /><span>{toast}</span></div>}
-      <div className="mobile-brand"><BrandMark size="small" /></div>
+      {toast && (
+        <div className="toast">
+          <Sparkles size={15} />
+          <span>{toast}</span>
+        </div>
+      )}
+      <div className="mobile-brand">
+        <BrandMark size="small" />
+      </div>
     </div>
   )
 }
