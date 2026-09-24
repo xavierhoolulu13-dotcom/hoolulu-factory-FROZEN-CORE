@@ -7,6 +7,7 @@ import { Composer } from './Composer'
 import { StatusPill } from './ui'
 
 interface NewBuildProps {
+  initialPrompt?: string
   onCreated: (buildId: string, conversationId: string) => void
   onOpenBuild: (id: string) => void
 }
@@ -16,8 +17,8 @@ function buildFrom(value: unknown): Build | null {
   return value as Build
 }
 
-export function NewBuild({ onCreated, onOpenBuild }: NewBuildProps) {
-  const [draft, setDraft] = useState('')
+export function NewBuild({ initialPrompt, onCreated, onOpenBuild }: NewBuildProps) {
+  const [draft, setDraft] = useState(initialPrompt ?? '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [streamingText, setStreamingText] = useState('')

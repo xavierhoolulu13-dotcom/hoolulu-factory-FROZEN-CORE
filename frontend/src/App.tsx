@@ -10,6 +10,7 @@ import type {
   HealthResponse,
 } from './types'
 import { BrandMark } from './components/BrandMark'
+import { AuditPage } from './components/AuditPage'
 import { BuildPage } from './components/BuildPage'
 import { BuildsDb } from './components/BuildsDb'
 import { ConversationPage } from './components/ConversationPage'
@@ -22,11 +23,21 @@ import './styles.css'
 
 type Route =
   | { page: 'dashboard' }
+  | { page: 'audit' }
   | { page: 'builds' }
   | { page: 'conversations' }
   | { page: 'new' }
   | { page: 'build'; id: string }
   | { page: 'conversation'; id: string }
+
+const AUDIT_BUILD_PROMPT =
+  'Build a one-page landing site for XKSH808 Digital Services Hawaii selling an "AI Visibility Audit" ' +
+  'for Honolulu small businesses. Hero headline: "Get found where customers actually ask: ChatGPT, Perplexity, Google AI." ' +
+  'Sections: how the audit works in 3 steps (1. We ask the AIs about your business vs 3 competitors. ' +
+  "2. You get a report showing exactly where you're invisible. 3. We fix the gaps.), " +
+  'what the business gets (visibility report, competitor comparison, fix checklist), ' +
+  'pricing teaser "DM VISIBLE for a free check", and a contact section with email xavierhoolulu13@gmail.com ' +
+  'and Cash App $xksh808dsh. Clean, modern, mobile-friendly, dark Notion-style aesthetic.'
 
 function navPage(route: Route): Page {
   return route.page === 'build' ? 'builds' : route.page === 'conversation' ? 'conversations' : route.page
@@ -44,6 +55,7 @@ export default function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null)
   const [showCore, setShowCore] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
+  const [buildPrefill, setBuildPrefill] = useState<string | null>(null)
 
   const flash = useCallback((message: string) => setToast(message), [])
 
@@ -96,7 +108,14 @@ export default function App() {
   }, [])
 
   const navigate = (page: Page) => {
+    setBuildPrefill(null)
     setRoute({ page })
+    setSidebarOpen(false)
+  }
+
+  const openNewBuild = (prefill: string | null = null) => {
+    setBuildPrefill(prefill)
+    setRoute({ page: 'new' })
     setSidebarOpen(false)
   }
 
@@ -188,9 +207,11 @@ export default function App() {
               ? 'Build'
               : route.page === 'conversation'
                 ? 'Conversation'
-                : route.page === 'new'
-                  ? 'New build'
-                  : page[0].toUpperCase() + page.slice(1)}
+                : route.page === 'audit'
+                  ? 'AI Visibility Audit'
+                  : route.page === 'new'
+                    ? 'New build'
+                    : page[0].toUpperCase() + page.slice(1)}
           </span>
           <span className="topbar-spacer" />
           {health && (
@@ -228,9 +249,14 @@ export default function App() {
           )}
           {route.page === 'new' && (
             <NewBuild
+              key={buildPrefill ?? 'new'}
+              initialPrompt={buildPrefill ?? ''}
               onCreated={() => void refreshAll()}
               onOpenBuild={(id) => void openBuild(id)}
             />
+          )}
+          {route.page === 'audit' && (
+            <AuditPage onBuildClient={() => openNewBuild(AUDIT_BUILD_PROMPT)} />
           )}
           {route.page === 'build' && (
             <BuildPage

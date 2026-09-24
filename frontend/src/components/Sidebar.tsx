@@ -4,11 +4,12 @@ import {
   Fingerprint,
   LayoutDashboard,
   MessagesSquare,
+  ScanSearch,
 } from 'lucide-react'
 import { BrandMark } from './BrandMark'
 import type { ConversationSummary } from '../types'
 
-export type Page = 'dashboard' | 'builds' | 'conversations' | 'new'
+export type Page = 'dashboard' | 'builds' | 'conversations' | 'new' | 'audit'
 
 interface SidebarProps {
   page: Page
@@ -24,6 +25,7 @@ interface SidebarProps {
 
 const NAV: Array<{ id: Page; label: string; icon: React.ReactNode }> = [
   { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={17} /> },
+  { id: 'audit', label: 'AI Visibility Audit', icon: <ScanSearch size={17} /> },
   { id: 'builds', label: 'Builds', icon: <Blocks size={17} /> },
   { id: 'conversations', label: 'Conversations', icon: <MessagesSquare size={17} /> },
 ]
