@@ -1,0 +1,13 @@
+{
+  "name": "Hoolulu Factory",
+  "image": "mcr.microsoft.com/devcontainers/python:3.11",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": { "version": "20" }
+  },
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "forwardPorts": [8000],
+  "portsAttributes": {
+    "8000": { "label": "Hoolulu Factory", "onAutoForward": "notify" }
+  },
+  "remoteUser": "vscode"
+}
